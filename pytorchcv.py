@@ -1,6 +1,7 @@
   
 # Script file to hide implementation details for PyTorch computer vision module
-
+import torch # torch, torch.optim, torch.nn.functional 모듈을 임포트하는데 PyTorch에서 모델을 구성하고 최적화하는 데 필요한 함수와 클래스를 제공
+from torch import optim
 import builtins
 import torch
 import torch.nn as nn
@@ -193,3 +194,81 @@ def load_cats_dogs_dataset(): # load_cats_dogs_dataset라는 이름의 함수를
     trainloader = torch.utils.data.DataLoader(trainset,batch_size=32) # 학습 데이터셋에 대한 데이터 로더를 생성하고, 배치 크기를 32로 설정
     testloader = torch.utils.data.DataLoader(testset,batch_size=32) # 테스트 데이터셋에 대한 데이터 로더를 생성하고, 배치 크기를 32로 설정
     return dataset, trainloader, testloader # 완성된 데이터셋과 데이터 로더들을 반환
+
+#PyTorch를 사용하여 신경망 모델을 학습하고 검증하는 과정을 구현
+
+
+
+def train(model, train_loader, test_loader, epochs=5): # 함수를 정의하여 모델, 학습 데이터 로더, 테스트 데이터 로더, 그리고 에폭 수를 매개변수로 받음
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu") # 사용 가능한 경우 CUDA를 사용하고, 그렇지 않으면 CPU를 사용하도록 설정
+    model.to(device) # 모델을 해당 장치로 이동
+    optimizer = optim.Adam(model.parameters(), lr=0.001) # Adam 최적화 도구를 사용하여 모델의 매개변수를 최적화하고, 학습률은 0.001로 설정
+    criterion = torch.nn.CrossEntropyLoss() # 다중 클래스 분류를 위한 크로스 엔트로피 손실 함수를 사용
+    
+    history = {'train_loss': [], 'train_acc': [], 'test_loss': [], 'test_acc': [], 'val_acc': [], 'val_loss': []}
+    
+    # 에폭 수만큼 반복하면서 모델의 학습 및 평가를 수행하는데 학습 시에는 model.train()을 호출하여 모델을 학습 모드로 설정하고, 평가 시에는 model.eval()을 호출하여 평가 모드로 설정
+
+    try:
+        for epoch in range(epochs):
+            model.train()
+            train_loss, train_correct, train_total = 0, 0, 0
+            for data, target in train_loader: # # 각 배치 데이터에 대해 데이터와 타겟을 장치로 이동시킨 후, 최적화 도구를 이용해 그래디언트를 초기화하고, 모델을 통해 예측을 수행
+                data, target = data.to(device), target.to(device)
+                optimizer.zero_grad()
+                output = model(data)
+                
+                if output is None:
+                    print("Warning: Model output is None.")
+                    continue
+                
+                loss = criterion(output, target) # 손실을 계산하고, 역전파를 통해 그래디언트를 계산한 다음, 최적화 도구로 매개변수를 업데이트
+                if loss is None:
+                    print("Warning: Loss computation returned None.")
+                    continue
+                
+                loss.backward()
+                optimizer.step()
+                
+                train_loss += loss.item() # 정확도와 손실을 기록하여 진행 상황을 모니터링
+                _, predicted = torch.max(output.data, 1)
+                train_total += target.size(0)
+                train_correct += (predicted == target).sum().item()
+            
+            train_loss /= len(train_loader.dataset)
+            train_acc = 100. * train_correct / train_total
+            history['train_loss'].append(train_loss)
+            history['train_acc'].append(train_acc)
+            
+            model.eval()
+            test_loss, test_correct, test_total = 0, 0, 0
+            with torch.no_grad():
+                for data, target in test_loader:
+                    data, target = data.to(device), target.to(device)
+                    output = model(data)
+                    if output is None:
+                        print("Warning: Model output is None during evaluation.")
+                        continue
+                    
+                    loss = criterion(output, target)
+                    if loss is None:
+                        print("Warning: Loss computation returned None during evaluation.")
+                        continue
+                    
+                    test_loss += loss.item()
+                    _, predicted = torch.max(output.data, 1)
+                    test_total += target.size(0)
+                    test_correct += (predicted == target).sum().item()
+            
+            test_loss /= len(test_loader.dataset)
+            test_acc = 100. * test_correct / test_total
+            history['test_loss'].append(test_loss)
+            history['test_acc'].append(test_acc)
+            
+            print(f'Epoch {epoch+1}/{epochs}: Train Loss: {train_loss:.4f}, Train Acc: {train_acc:.2f}%, Test Loss: {test_loss:.4f}, Test Acc: {test_acc:.2f}%')
+        
+    except Exception as e: # 에러가 발생할 경우 처리하는데 에러 발생 시 해당 에러 메시지를 출력하고 None을 반환
+        print(f"An error occurred: {e}")
+        return None
+    
+    return history # 학습과 테스트 과정에서의 손실과 정확도를 기록한 history 딕셔너리를 반환
